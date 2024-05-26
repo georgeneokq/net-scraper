@@ -1,0 +1,7 @@
+.venv
+__pycache__/
+
+# Don't commit personal config files
+data/
+filters/personal/
+autonav/
