@@ -9,7 +9,7 @@ import kthread
 import argparse
 import json
 import time
-from selenium import webdriver
+from seleniumwire import webdriver
 
 
 def remove_dup(iterable):
@@ -45,15 +45,19 @@ if __name__ == "__main__":
         default="",
         help="Filters to apply when capturing network response URLs.",
     )
+    parser.add_argument('--autonav-only', action='store_true', help='Only runs specified autonav script; Does not record URLs')
+    parser.add_argument('--verbose', action='store_true', help='Enable print statements for debugging')
 
     # Retrieve command line arguments
     args = parser.parse_args()
     url = args.url
     autonav = args.autonav
     filters_str = args.filters
+    autonav_only = args.autonav_only
+    verbose = args.verbose
 
     # Process command line arguments
-    input_filters = filters_str.split(",")
+    input_filters = filters_str.split(",") if filters_str != '' else []
     filters = []
     autonav_func = None
 
@@ -106,6 +110,9 @@ if __name__ == "__main__":
         print(f"Running autonav function `{autonav}`.")
         thread = kthread.KThread(target=autonav_func, args=(driver,))
         thread.start()
+    
+    if not autonav_only and len(input_filters) > 0:
+        print(f'Running with filters {", ".join(input_filters)}')
 
     # File to save URLs to
     FOLDER = "data"
@@ -120,26 +127,29 @@ if __name__ == "__main__":
     Path(FOLDER).mkdir(parents=True, exist_ok=True)
 
     # Main loop: Save network responses to disk every second
-    while True:
-        # Fetch the performance logs
-        logs = driver.get_log("performance")
+    if not autonav_only:
+        while True:
+            # Fetch the performance logs
+            logs = driver.get_log("performance")
 
-        # Extract URLs of all image resources
-        new_urls = []
-        for log in logs:
-            log_data = json.loads(log["message"])["message"]
+            # Extract URLs of all image resources
+            new_urls = []
+            for log in logs:
+                log_data = json.loads(log["message"])["message"]
 
-            # For each log, run it through specified filter functions, if any
-            if all(filter_func(log_data) for filter_func in filters):
-                params = log_data["params"]
-                response = params["response"]
-                urls.append(response.get("url", ""))
+                # For each log, run it through specified filter functions, if any
+                if all(filter_func(log_data) for filter_func in filters):
+                    params = log_data["params"]
+                    response = params["response"]
+                    urls.append(response.get("url", ""))
 
-        # Ensure duplicates removed
-        urls = remove_dup(urls)
+            # Ensure duplicates removed
+            urls = remove_dup(urls)
 
-        with open(file_path, "w", encoding="utf8") as f:
-            json.dump(urls, f, indent=4)
-            print(f"Total URLs recorded: {len(urls)}")
+            with open(file_path, "w", encoding="utf8") as f:
+                json.dump(urls, f, indent=4)
 
-        time.sleep(1)
+                if verbose:
+                    print(f"Total URLs recorded: {len(urls)}")
+
+            time.sleep(1)
